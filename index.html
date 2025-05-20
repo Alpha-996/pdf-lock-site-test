@@ -1,0 +1,121 @@
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request) {
+  // Define the PDF URL (hosted on Cloudflare Pages)
+  const pdfUrl = 'https://your-project.pages.dev/assets/echapter.pdf'; // Replace with your actual Pages URL
+
+  // HTML content with embedded JavaScript
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Economic Survey of India</title>
+    <style Chas>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        #pdf-viewer {
+            width: 100vw;
+            height: 100vh;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="pdf-viewer"></div>
+
+    <!-- Load PDF.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        // PDF URL passed from Worker (not hardcoded in HTML)
+        const pdfUrl = '${pdfUrl}';
+
+        // Load and render the PDF
+        async function loadPDF() {
+            try {
+                const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+                const viewer = document.getElementById('pdf-viewer');
+                viewer.innerHTML = ''; // Clear any previous content
+
+                // Loop through each page
+                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                    const page = await pdf.getPage(pageNum);
+                    const scale = 1.5;
+                    const viewport = page.getViewport({ scale });
+
+                    // Create canvas for each page
+                    const canvas = document.createElement('canvas');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    viewer.appendChild(canvas);
+
+                    // Render page to canvas
+                    const context = canvas.getContext('2d');
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport
+                    }).promise;
+                }
+
+                // Hide PDF.js toolbar (which includes download button)
+                const toolbar = document.querySelector('.toolbar');
+                if (toolbar) toolbar.classList.add('hidden');
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                viewer.innerHTML = '<p>Error loading PDF. Please try again later.</p>';
+            }
+        }
+
+        // Disable right-click context menu
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+        });
+
+        // Disable common keyboard shortcuts (Ctrl+S, Ctrl+P, Ctrl+C)
+        document.addEventListener('keydown', (e) => {
+            if (
+                (e.ctrlKey && (e.key === 's' || e.key === 'p' || e.key === 'c')) ||
+                (e.metaKey && (e.key === 's' || e.key === 'p' || e.key === 'c'))
+            ) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Prevent drag-and-drop
+        document.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+            return false;
+        });
+
+        // Load PDF when page loads
+        window.onload = loadPDF;
+    </script>
+</body>
+</html>
+  `;
+
+  // Return HTML response
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Surrogate-Control': 'no-store'
+    }
+  });
+}
