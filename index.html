@@ -1,121 +1,109 @@
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
-
-async function handleRequest(request) {
-  // Define the PDF URL (hosted on Cloudflare Pages)
-  const pdfUrl = 'https://your-project.pages.dev/assets/echapter.pdf'; // Replace with your actual Pages URL
-
-  // HTML content with embedded JavaScript
-  const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Economic Survey of India</title>
-    <style Chas>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #f0f0f0;
-        }
-        #pdf-viewer {
-            width: 100vw;
-            height: 100vh;
-        }
-        .hidden {
-            display: none !important;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure PDF Viewer</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, proxy-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #f0f0f0;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    #pdf-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-y: auto;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px 0;
+      pointer-events: none; /* Disable interactions */
+    }
+    #error-message {
+      color: red;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
 </head>
 <body>
-    <div id="pdf-viewer"></div>
+  <div id="pdf-container"></div>
+  <div id="error-message"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>
+    // Configure PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    <!-- Load PDF.js from CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script>
-        // Configure PDF.js worker
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    // Disable right-click
+    document.addEventListener('contextmenu', e => e.preventDefault());
 
-        // PDF URL passed from Worker (not hardcoded in HTML)
-        const pdfUrl = '${pdfUrl}';
+    // Disable keyboard shortcuts (Ctrl+S, Ctrl+C, Ctrl+P)
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey && ['s', 'c', 'p'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+    });
 
-        // Load and render the PDF
-        async function loadPDF() {
-            try {
-                const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
-                const viewer = document.getElementById('pdf-viewer');
-                viewer.innerHTML = ''; // Clear any previous content
+    // Block print functionality
+    window.onbeforeprint = e => e.preventDefault();
 
-                // Loop through each page
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    const page = await pdf.getPage(pageNum);
-                    const scale = 1.5;
-                    const viewport = page.getViewport({ scale });
+    // Load and render PDF
+    async function loadPDF() {
+      try {
+        const response = await fetch('/assets/echapter.pdf', {
+          method: 'GET',
+          headers: { 'Accept': 'application/pdf' },
+          cache: 'no-store'
+        });
 
-                    // Create canvas for each page
-                    const canvas = document.createElement('canvas');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
-                    viewer.appendChild(canvas);
-
-                    // Render page to canvas
-                    const context = canvas.getContext('2d');
-                    await page.render({
-                        canvasContext: context,
-                        viewport: viewport
-                    }).promise;
-                }
-
-                // Hide PDF.js toolbar (which includes download button)
-                const toolbar = document.querySelector('.toolbar');
-                if (toolbar) toolbar.classList.add('hidden');
-            } catch (error) {
-                console.error('Error loading PDF:', error);
-                viewer.innerHTML = '<p>Error loading PDF. Please try again later.</p>';
-            }
+        if (!response.ok) {
+          throw new Error('Failed to fetch PDF');
         }
 
-        // Disable right-click context menu
-        document.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            return false;
-        });
+        const pdfData = await response.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        const container = document.getElementById('pdf-container');
 
-        // Disable common keyboard shortcuts (Ctrl+S, Ctrl+P, Ctrl+C)
-        document.addEventListener('keydown', (e) => {
-            if (
-                (e.ctrlKey && (e.key === 's' || e.key === 'p' || e.key === 'c')) ||
-                (e.metaKey && (e.key === 's' || e.key === 'p' || e.key === 'c'))
-            ) {
-                e.preventDefault();
-                return false;
-            }
-        });
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
 
-        // Prevent drag-and-drop
-        document.addEventListener('dragstart', (e) => {
-            e.preventDefault();
-            return false;
-        });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          container.appendChild(canvas);
 
-        // Load PDF when page loads
-        window.onload = loadPDF;
-    </script>
+          const context = canvas.getContext('2d');
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            enableWebGL: false,
+            renderInteractiveForms: false,
+            textLayerMode: 0 // Disable text layer to prevent copying
+          }).promise;
+        }
+      } catch (error) {
+        document.getElementById('error-message').textContent = 'Error loading PDF: ' + error.message;
+      }
+    }
+
+    // Initialize
+    loadPDF();
+  </script>
 </body>
 </html>
-  `;
-
-  // Return HTML response
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'Surrogate-Control': 'no-store'
-    }
-  });
-}
